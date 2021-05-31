@@ -145,7 +145,7 @@ theorem find_base_greedy_finds_base :
   exact (mem_order a).symm,
 end
 
-theorem sorted_find_base_greedy_finds_best :
+theorem sorted_find_base_greedy_finds_min :
   (∀ x, x ∈ order ↔ x ∈ X) → order.sorted (λ a b, w a ≥ w b) →
     is_min_ind m w X (find_base_greedy m order) := begin
   intros mem_order order_sorted,
@@ -210,6 +210,31 @@ theorem sorted_find_base_greedy_finds_best :
   }, {
     rw if_neg h,
     exact hl,
+  }
+end
+
+noncomputable def find_min_base (m : matroid α) (w : α → ℝ) (X : finset α) :=
+  find_base_greedy m (merge_sort (λ a b, w a ≥ w b) X.1.to_list)
+
+theorem find_min_base_correct :
+  m.base_of X (find_min_base m w X) ∧
+    is_min_ind m w X (find_min_base m w X) := begin
+  have mem_order : ∀ (x : α), x ∈ merge_sort (λ (a b : α), w a ≥ w b) X.val.to_list ↔ x ∈ X := by {
+    intro x,
+    rw [mem_def, ← multiset.mem_to_list, perm.mem_iff $ perm_merge_sort _ _],
+  },
+  split, {
+    exact find_base_greedy_finds_base mem_order,
+  }, {
+    apply sorted_find_base_greedy_finds_min mem_order,
+    apply sorted_merge_sort _, {
+      refine {total := _},
+      intros a b,
+      apply le_total,
+    }, {
+      refine {trans := _},
+      finish,
+    }
   }
 end
 
