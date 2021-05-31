@@ -20,27 +20,32 @@ lemma insert_subset_of_mem_of_subset {x : α} : x ∈ X → A ⊆ X → insert x
   repeat { rw subset_iff }, finish,
 end
 
+lemma exists_min_ind_succ_card_of_ind_of_subset_of_not_base :
+  m.ind A → A ⊆ X →
+  ¬m.base_of X A →
+    ∃ B ⊆ X, is_min_ind m w X B ∧ B.card = A.card + 1 := begin
+  intros indA hAX A_not_base,
+  obtain ⟨B, Bgood, Bmin⟩ := exists_min_image (filter (λ S, m.ind S ∧ S.card = A.card + 1) (powerset X)) (λ S, S.sum w) _, {
+      simp only [mem_powerset, mem_filter] at Bgood,
+      obtain ⟨hBX, indB, Bcard⟩ := Bgood,
+      exact ⟨B, hBX, by finish, Bcard⟩,
+  }, {
+    rw base_of at A_not_base,
+    simp only [exists_prop, not_and, not_not, not_forall] at A_not_base,
+    specialize A_not_base hAX indA,
+    rcases A_not_base with ⟨x, hxA, hxX, hx⟩,
+    use insert x A,
+    simp only [mem_powerset, mem_filter],
+    refine ⟨_, hx, card_insert_of_not_mem hxA⟩,
+    exact insert_subset_of_mem_of_subset hxX hAX,
+  }
+end
+
 theorem rado_edmonds :
   is_min_ind m w X A → ¬m.base_of X A →
     ∃ x, x ∉ A ∧ is_min_ind m w X (insert x A) := begin
   rintro ⟨indA, hAX, Amin⟩ A_not_base,
-  have h_min_ssuperset : ∃ B ⊆ X, is_min_ind m w X B ∧ B.card = A.card + 1, {
-    obtain ⟨B, Bgood, Bmin⟩ := exists_min_image (filter (λ S, m.ind S ∧ S.card = A.card + 1) (powerset X)) (λ S, S.sum w) _, {
-      simp only [mem_powerset, mem_filter] at Bgood,
-      obtain ⟨hBX, indB, Bcard⟩ := Bgood,
-      exact ⟨B, hBX, by finish, Bcard⟩,
-    }, {
-      rw base_of at A_not_base,
-      simp only [exists_prop, not_and, not_not, not_forall] at A_not_base,
-      specialize A_not_base hAX indA,
-      rcases A_not_base with ⟨x, hxA, hxX, hx⟩,
-      use insert x A,
-      simp only [mem_powerset, mem_filter],
-      refine ⟨_, hx, card_insert_of_not_mem hxA⟩,
-      exact insert_subset_of_mem_of_subset hxX hAX,
-    }
-  },
-  obtain ⟨B, hBX, ⟨indB, Bmin⟩, Bcard⟩ := h_min_ssuperset,
+  obtain ⟨B, hBX, ⟨indB, Bmin⟩, Bcard⟩ := exists_min_ind_succ_card_of_ind_of_subset_of_not_base indA hAX A_not_base,
   obtain ⟨x, hxB, hxA, hx⟩ := m.ind_exchange _ _ indA indB (by linarith),
   refine ⟨x, hxA, _⟩,
   rw is_min_ind,
