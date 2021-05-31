@@ -13,24 +13,29 @@ namespace matroid
 
 instance : decidable_pred m.ind := m.ind_dec
 
-def is_best_ind (m : matroid α) (w : α → ℝ) (X A : finset α)
+@[simp] def is_min_ind (m : matroid α) (w : α → ℝ) (X A : finset α)
   := m.ind A ∧ A ⊆ X ∧ ∀ B ⊆ X, m.ind B → B.card = A.card → A.sum w ≤ B.sum w
 
+lemma insert_subset_of_subset {x : α} : x ∈ X → A ⊆ X → insert x A ⊆ X := begin
+  intros hx hAX x0 h_x0,
+  rw mem_insert at h_x0,
+  cases h_x0, {
+    subst h_x0,
+    exact hx,
+  }, {
+    exact hAX h_x0,
+  }
+end
+
 theorem rado_edmonds :
-  is_best_ind m w X A → ¬m.base_of X A →
-    ∃ x, x ∉ A ∧ is_best_ind m w X (insert x A) := begin
+  is_min_ind m w X A → ¬m.base_of X A →
+    ∃ x, x ∉ A ∧ is_min_ind m w X (insert x A) := begin
   rintro ⟨indA, hAX, Abest⟩ A_not_base,
-  have h_best_bigger : ∃ B ⊆ X, is_best_ind m w X B ∧ B.card = A.card + 1, {
+  have h_best_bigger : ∃ B ⊆ X, is_min_ind m w X B ∧ B.card = A.card + 1, {
     obtain ⟨B, Bgood, Bmin⟩ := exists_min_image (filter (λ S, m.ind S ∧ S.card = A.card + 1) (powerset X)) (λ S, S.sum w) _, {
       simp only [mem_powerset, mem_filter] at Bgood,
       obtain ⟨hBX, indB, Bcard⟩ := Bgood,
-      refine ⟨B, hBX, _, Bcard⟩,
-      rw is_best_ind,
-      refine ⟨indB, _⟩,
-      simp only [mem_powerset, and_imp, mem_filter] at Bmin,
-      refine ⟨hBX, _⟩,
-      rw Bcard,
-      exact Bmin,
+      exact ⟨B, hBX, by finish, Bcard⟩,
     }, {
       rw base_of at A_not_base,
       simp only [exists_prop, not_and, not_not, not_forall] at A_not_base,
@@ -38,35 +43,17 @@ theorem rado_edmonds :
       rcases A_not_base with ⟨x, hxA, hxX, hx⟩,
       use insert x A,
       simp only [mem_powerset, mem_filter],
-      refine ⟨_, hx, _⟩, {
-        intros x0 h_x0,
-        rw mem_insert at h_x0,
-        cases h_x0, {
-          subst h_x0, exact hxX,
-        }, {
-          exact hAX h_x0,
-        }
-      }, {
-        exact card_insert_of_not_mem hxA,
-      }
+      refine ⟨_, hx, card_insert_of_not_mem hxA⟩,
+      exact insert_subset_of_subset hxX hAX,
     }
   },
   obtain ⟨B, hBX, ⟨indB, Bbest⟩, Bcard⟩ := h_best_bigger,
   obtain ⟨x, hxB, hxA, hx⟩ := m.ind_exchange _ _ indA indB (by linarith),
   refine ⟨x, hxA, _⟩,
-  rw is_best_ind,
+  rw is_min_ind,
   refine ⟨hx, _⟩,
   have h_ins_card := card_insert_of_not_mem hxA,
-  have insert_subset_X : insert x A ⊆ X := by begin
-    intros x0 h_x0,
-    rw mem_insert at h_x0,
-    cases h_x0, {
-      subst h_x0,
-      exact hBX hxB,
-    }, {
-      exact hAX h_x0,
-    }
-  end,
+  have insert_subset_X := insert_subset_of_subset (hBX hxB) hAX,
   have hw : (insert x A).sum w = B.sum w, {
     apply le_antisymm, {
       rw sum_insert hxA,
@@ -91,27 +78,139 @@ theorem rado_edmonds :
       apply Bbest.2, {
         exact insert_subset_X,
       },
-      exact hx,
-      rw h_ins_card,
-      exact Bcard.symm,
+      exact hx, finish,
     }
   },
   rw [hw, h_ins_card, ← Bcard],
   exact ⟨insert_subset_X, Bbest.2⟩,
 end
 
-def find_base_greedy_rec (m : matroid α) : finset α → list α → finset α
-| A [] := A
-| A (x :: l) :=
-  find_base_greedy_rec (if m.ind (insert x A) then (insert x A) else A) l
+open list
 
-def find_base_greedy (m : matroid α) (order : list α)
-  : finset α := find_base_greedy_rec m ∅ order
+def find_base_greedy (m : matroid α) : list α → finset α
+| [] := ∅
+| (x :: l) := let lBase := find_base_greedy l in 
+    if m.ind (insert x lBase) then insert x lBase else lBase
 
--- theorem find_base_finds_base :
---   (∀ x, x ∈ order ↔ x ∈ X) → m.base_of X (find_base_greedy m order) := begin
---   intro mem_order,
+lemma base_of_insert (x : α) :
+  m.base_of X A → m.base_of (insert x X) (insert x A) ∨
+    m.base_of (insert x X) A ∧ ¬m.ind (insert x A) := begin
+  intro Abase,
+  by_cases h_ind : (m.ind $ insert x A), {
+    left,
+    refine ⟨insert_subset_insert _ (base_of_subset Abase), h_ind, _⟩,
+    intros y hyA hyX,
+    have h_not_ind := Abase.2.2 y (λ h, hyA $ subset_insert x A h),
+    rw mem_insert at hyX,
+    cases hyX, {
+      finish,
+    }, {
+      refine dep_superset _ (h_not_ind hyX),
+      exact insert_subset_insert _ (subset_insert _ _),
+    }
+  }, {
+    right,
+    refine ⟨_, h_ind⟩,
+    refine ⟨subset.trans (base_of_subset Abase) (subset_insert _ _), base_of_ind Abase, _⟩,
+    intros y hyA hyX,
+    have h_not_ind := Abase.2.2 y hyA,
+    finish,
+  }
+end
 
--- end
+lemma find_base_greedy_finds_base_of_order :
+  m.base_of order.to_finset (find_base_greedy m order) := begin
+  induction order with hd tl h_order, {
+    simp only [to_finset_nil],
+    rw [find_base_greedy, ← base_of_refl_iff_ind],
+    exact m.ind_empty,
+  }, {
+    rw [to_finset_cons, find_base_greedy],
+    dsimp only,
+    have base_of_insert_options := base_of_insert hd h_order,
+    by_cases (m.ind $ insert hd $ find_base_greedy m tl), {
+      finish,
+    }, {
+      finish using base_of_ind,
+    }
+  }
+end
+
+theorem find_base_greedy_finds_base :
+  (∀ x, x ∈ order ↔ x ∈ X) → m.base_of X (find_base_greedy m order) := begin
+  intro mem_order,
+  convert find_base_greedy_finds_base_of_order,
+  ext,
+  rw mem_to_finset,
+  exact (mem_order a).symm,
+end
+
+theorem sorted_find_base_greedy_finds_best :
+  (∀ x, x ∈ order ↔ x ∈ X) → order.sorted (λ a b, w a ≥ w b) →
+    is_min_ind m w X (find_base_greedy m order) := begin
+  intros mem_order order_sorted,
+  suffices h_suffix : ∀ (l : list α), l <:+ order → is_min_ind m w X (find_base_greedy m l), {
+    apply h_suffix,
+    exact suffix_refl order,
+  },
+  intro l,
+  induction l with hd tl hl, {
+    rintro -,
+    rw [is_min_ind, find_base_greedy],
+    finish,
+  },
+  intro hd_tl_suffix,
+  specialize hl (is_suffix.trans (suffix_cons hd tl) hd_tl_suffix),
+  rw find_base_greedy,
+  dsimp only,
+  by_cases (m.ind $ insert hd $ find_base_greedy m tl), {
+    rw if_pos h,
+    obtain ⟨pref, rfl⟩ := hd_tl_suffix,
+    refine ⟨h, _, _⟩, {
+      apply insert_subset_of_subset, {
+        finish,
+      },
+      exact hl.2.1,
+    },
+    by_cases h_in : hd ∈ find_base_greedy m tl, {
+      rw insert_eq_of_mem h_in,
+      exact hl.2.2,
+    }, {
+      obtain ⟨x, hx, ⟨xBest_ind, xBest_sub, xBest_best⟩⟩ := rado_edmonds hl _, {
+        intros B Bsub Bind Bcard,
+        rw card_insert_of_not_mem hx at xBest_best,
+        rw card_insert_of_not_mem h_in at Bcard,
+        specialize xBest_best B Bsub Bind Bcard,
+        rw sum_insert hx at xBest_best,
+        rw sum_insert h_in,
+        suffices : w x ≥ w hd, { linarith },
+        rw insert_subset at xBest_sub,
+        rcases mem_append.1 ((mem_order x).2 xBest_sub.1) with (hx_pref | hx_hd), {
+          obtain ⟨a, b, rfl⟩ := mem_split hx_pref,
+          exact (pairwise_append.1 order_sorted).2.2 x hx_pref hd (mem_cons_self _ _),
+        }, {
+          rw mem_cons_iff at hx_hd,
+          have x_eq_hd : x = hd := by {
+            suffices : x ∉ tl, { finish },
+            by_contradiction,
+            exact (find_base_greedy_finds_base_of_order.2.2 x hx $ mem_to_finset.mpr h) xBest_ind,
+          },
+          subst x_eq_hd,
+          linarith,
+        }
+      }, {
+        rw base_of,
+        simp only [exists_prop, mem_insert, not_and, mem_to_finset, not_not, not_forall],
+        rintro - -,
+        refine ⟨hd, h_in, _, h⟩,
+        rw ← mem_order hd,
+        finish,
+      }
+    }
+  }, {
+    rw if_neg h,
+    exact hl,
+  }
+end
 
 end matroid
