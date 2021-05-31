@@ -16,22 +16,15 @@ instance : decidable_pred m.ind := m.ind_dec
 @[simp] def is_min_ind (m : matroid α) (w : α → ℝ) (X A : finset α)
   := m.ind A ∧ A ⊆ X ∧ ∀ B ⊆ X, m.ind B → B.card = A.card → A.sum w ≤ B.sum w
 
-lemma insert_subset_of_subset {x : α} : x ∈ X → A ⊆ X → insert x A ⊆ X := begin
-  intros hx hAX x0 h_x0,
-  rw mem_insert at h_x0,
-  cases h_x0, {
-    subst h_x0,
-    exact hx,
-  }, {
-    exact hAX h_x0,
-  }
+lemma insert_subset_of_mem_of_subset {x : α} : x ∈ X → A ⊆ X → insert x A ⊆ X := begin
+  repeat { rw subset_iff }, finish,
 end
 
 theorem rado_edmonds :
   is_min_ind m w X A → ¬m.base_of X A →
     ∃ x, x ∉ A ∧ is_min_ind m w X (insert x A) := begin
-  rintro ⟨indA, hAX, Abest⟩ A_not_base,
-  have h_best_bigger : ∃ B ⊆ X, is_min_ind m w X B ∧ B.card = A.card + 1, {
+  rintro ⟨indA, hAX, Amin⟩ A_not_base,
+  have h_min_ssuperset : ∃ B ⊆ X, is_min_ind m w X B ∧ B.card = A.card + 1, {
     obtain ⟨B, Bgood, Bmin⟩ := exists_min_image (filter (λ S, m.ind S ∧ S.card = A.card + 1) (powerset X)) (λ S, S.sum w) _, {
       simp only [mem_powerset, mem_filter] at Bgood,
       obtain ⟨hBX, indB, Bcard⟩ := Bgood,
@@ -44,16 +37,16 @@ theorem rado_edmonds :
       use insert x A,
       simp only [mem_powerset, mem_filter],
       refine ⟨_, hx, card_insert_of_not_mem hxA⟩,
-      exact insert_subset_of_subset hxX hAX,
+      exact insert_subset_of_mem_of_subset hxX hAX,
     }
   },
-  obtain ⟨B, hBX, ⟨indB, Bbest⟩, Bcard⟩ := h_best_bigger,
+  obtain ⟨B, hBX, ⟨indB, Bmin⟩, Bcard⟩ := h_min_ssuperset,
   obtain ⟨x, hxB, hxA, hx⟩ := m.ind_exchange _ _ indA indB (by linarith),
   refine ⟨x, hxA, _⟩,
   rw is_min_ind,
   refine ⟨hx, _⟩,
   have h_ins_card := card_insert_of_not_mem hxA,
-  have insert_subset_X := insert_subset_of_subset (hBX hxB) hAX,
+  have insert_subset_X := insert_subset_of_mem_of_subset (hBX hxB) hAX,
   have hw : (insert x A).sum w = B.sum w, {
     apply le_antisymm, {
       rw sum_insert hxA,
@@ -66,7 +59,7 @@ theorem rado_edmonds :
         linarith,
       },
       rw w_diff,
-      apply Abest, {
+      apply Amin, {
         exact subset.trans (erase_subset _ _) hBX,
       }, {
         exact m.ind_subset _ _ (erase_subset _ _) indB,
@@ -75,14 +68,11 @@ theorem rado_edmonds :
       rw card_erase_of_mem' hxB,
       exact Bcard,
     }, {
-      apply Bbest.2, {
-        exact insert_subset_X,
-      },
-      exact hx, finish,
+      apply Bmin.2, all_goals { finish },
     }
   },
   rw [hw, h_ins_card, ← Bcard],
-  exact ⟨insert_subset_X, Bbest.2⟩,
+  exact ⟨insert_subset_X, Bmin.2⟩,
 end
 
 open list
@@ -145,7 +135,7 @@ theorem find_base_greedy_finds_base :
   exact (mem_order a).symm,
 end
 
-theorem sorted_find_base_greedy_finds_min :
+theorem find_base_greedy_of_sorted_finds_min :
   (∀ x, x ∈ order ↔ x ∈ X) → order.sorted (λ a b, w a ≥ w b) →
     is_min_ind m w X (find_base_greedy m order) := begin
   intros mem_order order_sorted,
@@ -167,7 +157,7 @@ theorem sorted_find_base_greedy_finds_min :
     rw if_pos h,
     obtain ⟨pref, rfl⟩ := hd_tl_suffix,
     refine ⟨h, _, _⟩, {
-      apply insert_subset_of_subset, {
+      apply insert_subset_of_mem_of_subset, {
         finish,
       },
       exact hl.2.1,
@@ -176,16 +166,16 @@ theorem sorted_find_base_greedy_finds_min :
       rw insert_eq_of_mem h_in,
       exact hl.2.2,
     }, {
-      obtain ⟨x, hx, ⟨xBest_ind, xBest_sub, xBest_best⟩⟩ := rado_edmonds hl _, {
+      obtain ⟨x, hx, ⟨xMin_ind, xMin_sub, xMin_min⟩⟩ := rado_edmonds hl _, {
         intros B Bsub Bind Bcard,
-        rw card_insert_of_not_mem hx at xBest_best,
+        rw card_insert_of_not_mem hx at xMin_min,
         rw card_insert_of_not_mem h_in at Bcard,
-        specialize xBest_best B Bsub Bind Bcard,
-        rw sum_insert hx at xBest_best,
+        specialize xMin_min B Bsub Bind Bcard,
+        rw sum_insert hx at xMin_min,
         rw sum_insert h_in,
         suffices : w x ≥ w hd, { linarith },
-        rw insert_subset at xBest_sub,
-        rcases mem_append.1 ((mem_order x).2 xBest_sub.1) with (hx_pref | hx_hd), {
+        rw insert_subset at xMin_sub,
+        rcases mem_append.1 ((mem_order x).2 xMin_sub.1) with (hx_pref | hx_hd), {
           obtain ⟨a, b, rfl⟩ := mem_split hx_pref,
           exact (pairwise_append.1 order_sorted).2.2 x hx_pref hd (mem_cons_self _ _),
         }, {
@@ -193,7 +183,7 @@ theorem sorted_find_base_greedy_finds_min :
           have x_eq_hd : x = hd := by {
             suffices : x ∉ tl, { finish },
             by_contradiction,
-            exact (find_base_greedy_finds_base_of_order.2.2 x hx $ mem_to_finset.mpr h) xBest_ind,
+            exact (find_base_greedy_finds_base_of_order.2.2 x hx $ mem_to_finset.mpr h) xMin_ind,
           },
           subst x_eq_hd,
           linarith,
@@ -213,12 +203,12 @@ theorem sorted_find_base_greedy_finds_min :
   }
 end
 
-noncomputable def find_min_base (m : matroid α) (w : α → ℝ) (X : finset α) :=
+noncomputable def find_min_base_greedy (m : matroid α) (w : α → ℝ) (X : finset α) :=
   find_base_greedy m (merge_sort (λ a b, w a ≥ w b) X.1.to_list)
 
 theorem find_min_base_correct :
-  m.base_of X (find_min_base m w X) ∧
-    is_min_ind m w X (find_min_base m w X) := begin
+  m.base_of X (find_min_base_greedy m w X) ∧
+    is_min_ind m w X (find_min_base_greedy m w X) := begin
   have mem_order : ∀ (x : α), x ∈ merge_sort (λ (a b : α), w a ≥ w b) X.val.to_list ↔ x ∈ X := by {
     intro x,
     rw [mem_def, ← multiset.mem_to_list, perm.mem_iff $ perm_merge_sort _ _],
@@ -226,7 +216,7 @@ theorem find_min_base_correct :
   split, {
     exact find_base_greedy_finds_base mem_order,
   }, {
-    apply sorted_find_base_greedy_finds_min mem_order,
+    apply find_base_greedy_of_sorted_finds_min mem_order,
     apply sorted_merge_sort _, {
       refine {total := _},
       intros a b,
